@@ -9,9 +9,7 @@ import random
 import torchvision.transforms as transforms
 import torch
 
-ic15_root_dir = './data/ICDAR2015/Challenge4/'
-ic15_test_data_dir = ic15_root_dir + 'ch4_test_images/'
-ic15_test_gt_dir = ic15_root_dir + 'ch4_test_localization_transcription_gt/'
+demo_dir = './data/demo_images/'
 
 random.seed(123456)
 
@@ -30,9 +28,9 @@ def scale(img, long_size=2240):
     img = cv2.resize(img, dsize=None, fx=scale, fy=scale)
     return img
 
-class IC15TestLoader(data.Dataset):
+class IC15TestLoader_Demo(data.Dataset):
     def __init__(self, part_id=0, part_num=1, long_size=2240):
-        data_dirs = [ic15_test_data_dir]
+        data_dirs = [demo_dir]
         
         self.img_paths = []
         

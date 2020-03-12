@@ -6,24 +6,24 @@ import collections
 import torch
 import argparse
 import numpy as np
-import torch.nn as nn
-import torch.nn.functional as F
+# import torch.nn as nn
+# import torch.nn.functional as F
 
 from torch.autograd import Variable
 from torch.utils import data
 
-from dataset import IC15TestLoader
+from dataset import CTW1500TestLoader_Demo
 import models
-import util
+# import util
 # c++ version pse based on opencv 3+
 from pse import pse
 # python pse
 # from pypse import pse as pypse
 
-def extend_3c(img):
-    img = img.reshape(img.shape[0], img.shape[1], 1)
-    img = np.concatenate((img, img, img), axis=2)
-    return img
+# def extend_3c(img):
+#     img = img.reshape(img.shape[0], img.shape[1], 1)
+#     img = np.concatenate((img, img, img), axis=2)
+#     return img
 
 def debug(idx, img_paths, imgs, output_root):
     if not os.path.exists(output_root):
@@ -42,33 +42,40 @@ def debug(idx, img_paths, imgs, output_root):
     print ('{}/{} {}'.format(idx, len(img_paths), img_name))
     cv2.imwrite(output_root + img_name, res)
 
-def write_result_as_txt(image_name, bboxes, path):
-    filename = util.io.join_path(path, 'res_%s.txt'%(image_name))
-    lines = []
-    for b_idx, bbox in enumerate(bboxes):
-        values = [int(v) for v in bbox]
-        line = "%d, %d, %d, %d, %d, %d, %d, %d\n"%tuple(values)
-        lines.append(line)
-    util.io.write_lines(filename, lines)
+# def write_result_as_txt(image_name, bboxes, path):
+#     if not os.path.exists(path):
+#         os.makedirs(path)
 
-def polygon_from_points(points):
-    """
-    Returns a Polygon object to use with the Polygon2 class from a list of 8 points: x1,y1,x2,y2,x3,y3,x4,y4
-    """
-    resBoxes=np.empty([1, 8],dtype='int32')
-    resBoxes[0, 0] = int(points[0])
-    resBoxes[0, 4] = int(points[1])
-    resBoxes[0, 1] = int(points[2])
-    resBoxes[0, 5] = int(points[3])
-    resBoxes[0, 2] = int(points[4])
-    resBoxes[0, 6] = int(points[5])
-    resBoxes[0, 3] = int(points[6])
-    resBoxes[0, 7] = int(points[7])
-    pointMat = resBoxes[0].reshape([2, 4]).T
-    return plg.Polygon(pointMat)
+#     filename = util.io.join_path(path, '%s.txt'%(image_name))
+#     lines = []
+#     for b_idx, bbox in enumerate(bboxes):
+#         values = [int(v) for v in bbox]
+#         # line = "%d, %d, %d, %d, %d, %d, %d, %d\n"%tuple(values)
+#         line = "%d"%values[0]
+#         for v_id in range(1, len(values)):
+#             line += ", %d"%values[v_id]
+#         line += '\n'
+#         lines.append(line)
+#     util.io.write_lines(filename, lines)
+
+# def polygon_from_points(points):
+#     """
+#     Returns a Polygon object to use with the Polygon2 class from a list of 8 points: x1,y1,x2,y2,x3,y3,x4,y4
+#     """
+#     resBoxes=np.empty([1, 8],dtype='int32')
+#     resBoxes[0, 0] = int(points[0])
+#     resBoxes[0, 4] = int(points[1])
+#     resBoxes[0, 1] = int(points[2])
+#     resBoxes[0, 5] = int(points[3])
+#     resBoxes[0, 2] = int(points[4])
+#     resBoxes[0, 6] = int(points[5])
+#     resBoxes[0, 3] = int(points[6])
+#     resBoxes[0, 7] = int(points[7])
+#     pointMat = resBoxes[0].reshape([2, 4]).T
+#     return plg.Polygon(pointMat)
 
 def test(args):
-    data_loader = IC15TestLoader(long_size=args.long_size)
+    data_loader = CTW1500TestLoader_Demo(long_size=args.long_size)
     test_loader = torch.utils.data.DataLoader(
         data_loader,
         batch_size=1,
@@ -116,7 +123,6 @@ def test(args):
         print('progress: %d / %d'%(idx, len(test_loader)))
         sys.stdout.flush()
 
-        
         img = Variable(img.cuda())
         org_img = org_img.numpy().astype('uint8')[0]
         text_box = org_img.copy()
@@ -157,8 +163,21 @@ def test(args):
             if score_i < args.min_score:
                 continue
 
-            rect = cv2.minAreaRect(points)
-            bbox = cv2.boxPoints(rect) * scale
+            # rect = cv2.minAreaRect(points)
+            binary = np.zeros(label.shape, dtype='uint8')
+            binary[label == i] = 1
+
+            # _, contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            contour = contours[0]
+            # epsilon = 0.01 * cv2.arcLength(contour, True)
+            # bbox = cv2.approxPolyDP(contour, epsilon, True)
+            bbox = contour
+
+            if bbox.shape[0] <= 2:
+                continue
+            
+            bbox = bbox * scale
             bbox = bbox.astype('int32')
             bboxes.append(bbox.reshape(-1))
 
@@ -170,18 +189,13 @@ def test(args):
         sys.stdout.flush()
 
         for bbox in bboxes:
-            cv2.drawContours(text_box, [bbox.reshape(4, 2)], -1, (0, 255, 0), 2)
+            cv2.drawContours(text_box, [bbox.reshape(bbox.shape[0] // 2, 2)], -1, (0, 255, 0), 2)
 
-        image_name = data_loader.img_paths[idx].split('/')[-1].split('.')[0]
-        write_result_as_txt(image_name, bboxes, 'outputs/submit_ic15/')
+        # image_name = data_loader.img_paths[idx].split('/')[-1].split('.')[0]
+        # write_result_as_txt(image_name, bboxes, 'outputs/submit_ctw1500/')
         
         text_box = cv2.resize(text_box, (text.shape[1], text.shape[0]))
-        debug(idx, data_loader.img_paths, [[text_box]], 'outputs/vis_ic15/')
-
-    cmd = 'cd %s;zip -j %s %s/*'%('./outputs/', 'submit_ic15.zip', 'submit_ic15');
-    print(cmd)
-    sys.stdout.flush()
-    util.cmd.cmd(cmd)
+        debug(idx, data_loader.img_paths, [[text_box]], 'outputs/vis_ctw1500_demo/')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Hyperparams')
@@ -189,16 +203,16 @@ if __name__ == '__main__':
     parser.add_argument('--resume', nargs='?', type=str, default=None,    
                         help='Path to previous saved model to restart from')
     parser.add_argument('--binary_th', nargs='?', type=float, default=1.0,
-                        help='Path to previous saved model to restart from')
-    parser.add_argument('--kernel_num', nargs='?', type=int, default=7,
-                        help='Path to previous saved model to restart from')
+                        help='??')
+    parser.add_argument('--kernel_num', nargs='?', type=int, default=3,
+                        help='number of kernels during training')
     parser.add_argument('--scale', nargs='?', type=int, default=1,
-                        help='Path to previous saved model to restart from')
-    parser.add_argument('--long_size', nargs='?', type=int, default=2240,
-                        help='Path to previous saved model to restart from')
-    parser.add_argument('--min_kernel_area', nargs='?', type=float, default=5.0,
+                        help='')
+    parser.add_argument('--long_size', nargs='?', type=int, default=1280,
+                        help='size of length of testing image')
+    parser.add_argument('--min_kernel_area', nargs='?', type=float, default=10.0,
                         help='min kernel area')
-    parser.add_argument('--min_area', nargs='?', type=float, default=800.0,
+    parser.add_argument('--min_area', nargs='?', type=float, default=300.0,
                         help='min area')
     parser.add_argument('--min_score', nargs='?', type=float, default=0.93,
                         help='min score')

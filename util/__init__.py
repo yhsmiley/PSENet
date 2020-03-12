@@ -1,27 +1,27 @@
-import log
-import dtype
+from . import log
+from . import dtype
 # import plt
-import np
-import img
+from . import np
+from . import img
 _img = img
-import dec
-import rand
-import mod
-import proc
-import test
-import neighbour as nb
+from . import dec
+from . import rand
+from . import mod
+from . import proc
+from . import test
+from . import neighbour as nb
 #import mask
-import str_ as str
+from . import str_ as str
 import io as sys_io
-import io_ as io
-import feature
-import thread_ as thread
-import caffe_ as caffe
+from . import io_ as io
+from . import feature
+from . import thread_ as thread
+from . import caffe_ as caffe
 # import tf
-import cmd
-import ml
+from . import cmd
+from . import ml
 import sys
-import url
+from . import url
 from .misc import *
 from .logger import *
 # log.init_logger('~/temp/log/log_' + get_date_str() + '.log')

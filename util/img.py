@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import logging
 import math
-import event
+from . import event
 import util
 
 IMREAD_GRAY = 0

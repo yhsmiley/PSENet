@@ -6,13 +6,13 @@ import collections
 import torch
 import argparse
 import numpy as np
-import torch.nn as nn
-import torch.nn.functional as F
+# import torch.nn as nn
+# import torch.nn.functional as F
 
 from torch.autograd import Variable
 from torch.utils import data
 
-from dataset import IC15TestLoader
+from dataset import IC15TestLoader_Demo
 import models
 import util
 # c++ version pse based on opencv 3+
@@ -20,10 +20,12 @@ from pse import pse
 # python pse
 # from pypse import pse as pypse
 
-def extend_3c(img):
-    img = img.reshape(img.shape[0], img.shape[1], 1)
-    img = np.concatenate((img, img, img), axis=2)
-    return img
+from aic_ocr.text_engine import TextEngine
+
+# def extend_3c(img):
+#     img = img.reshape(img.shape[0], img.shape[1], 1)
+#     img = np.concatenate((img, img, img), axis=2)
+#     return img
 
 def debug(idx, img_paths, imgs, output_root):
     if not os.path.exists(output_root):
@@ -42,39 +44,86 @@ def debug(idx, img_paths, imgs, output_root):
     print ('{}/{} {}'.format(idx, len(img_paths), img_name))
     cv2.imwrite(output_root + img_name, res)
 
-def write_result_as_txt(image_name, bboxes, path):
-    filename = util.io.join_path(path, 'res_%s.txt'%(image_name))
-    lines = []
+# def write_result_as_txt(image_name, bboxes, path):
+#     filename = util.io.join_path(path, 'res_%s.txt'%(image_name))
+#     lines = []
+#     for b_idx, bbox in enumerate(bboxes):
+#         values = [int(v) for v in bbox]
+#         line = "%d, %d, %d, %d, %d, %d, %d, %d\n"%tuple(values)
+#         lines.append(line)
+#     util.io.write_lines(filename, lines)
+
+# def polygon_from_points(points):
+#     """
+#     Returns a Polygon object to use with the Polygon2 class from a list of 8 points: x1,y1,x2,y2,x3,y3,x4,y4
+#     """
+#     resBoxes=np.empty([1, 8],dtype='int32')
+#     resBoxes[0, 0] = int(points[0])
+#     resBoxes[0, 4] = int(points[1])
+#     resBoxes[0, 1] = int(points[2])
+#     resBoxes[0, 5] = int(points[3])
+#     resBoxes[0, 2] = int(points[4])
+#     resBoxes[0, 6] = int(points[5])
+#     resBoxes[0, 3] = int(points[6])
+#     resBoxes[0, 7] = int(points[7])
+#     pointMat = resBoxes[0].reshape([2, 4]).T
+#     return plg.Polygon(pointMat)
+
+def save_bbox(idx, img_paths, bboxes, path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    image_name = img_paths[idx].split('/')[-1].split('.')[0]
+
+    img = cv2.imread(img_paths[idx])
+    height = img.shape[0]
+    width = img.shape[1]
+
+    for b_idx, bbox in enumerate(bboxes):
+        filename = util.io.join_path(path, '%s_%d.jpg'%(image_name, b_idx))
+        values = [int(v) for v in bbox]
+        # line = "%d, %d, %d, %d, %d, %d, %d, %d\n"%tuple(values)
+
+        mask = np.zeros((height, width), dtype=np.uint8)
+        points = np.array([[[values[0],values[1]],[values[2],values[3]],[values[4],values[5]],[values[6],values[7]]]])
+        cv2.fillPoly(mask, points, (255))
+        res = cv2.bitwise_and(img,img,mask = mask)
+        rect = cv2.boundingRect(points) # returns (x,y,w,h) of the rect
+        rect = tuple([0 if i<0 else i for i in rect])
+        cropped = res[rect[1]: rect[1] + rect[3], rect[0]: rect[0] + rect[2]]
+        cv2.imwrite(filename, cropped)
+
+def get_crops(idx, img_paths, bboxes):
+    img = cv2.imread(img_paths[idx])
+    height = img.shape[0]
+    width = img.shape[1]
+
+    crops = []
     for b_idx, bbox in enumerate(bboxes):
         values = [int(v) for v in bbox]
-        line = "%d, %d, %d, %d, %d, %d, %d, %d\n"%tuple(values)
-        lines.append(line)
-    util.io.write_lines(filename, lines)
+        # line = "%d, %d, %d, %d, %d, %d, %d, %d\n"%tuple(values)
 
-def polygon_from_points(points):
-    """
-    Returns a Polygon object to use with the Polygon2 class from a list of 8 points: x1,y1,x2,y2,x3,y3,x4,y4
-    """
-    resBoxes=np.empty([1, 8],dtype='int32')
-    resBoxes[0, 0] = int(points[0])
-    resBoxes[0, 4] = int(points[1])
-    resBoxes[0, 1] = int(points[2])
-    resBoxes[0, 5] = int(points[3])
-    resBoxes[0, 2] = int(points[4])
-    resBoxes[0, 6] = int(points[5])
-    resBoxes[0, 3] = int(points[6])
-    resBoxes[0, 7] = int(points[7])
-    pointMat = resBoxes[0].reshape([2, 4]).T
-    return plg.Polygon(pointMat)
+        mask = np.zeros((height, width), dtype=np.uint8)
+        points = np.array([[[values[0],values[1]],[values[2],values[3]],[values[4],values[5]],[values[6],values[7]]]])
+        cv2.fillPoly(mask, points, (255))
+        res = cv2.bitwise_and(img,img,mask = mask)
+        rect = cv2.boundingRect(points) # returns (x,y,w,h) of the rect
+        rect = tuple([0 if i<0 else i for i in rect])
+        cropped = res[rect[1]: rect[1] + rect[3], rect[0]: rect[0] + rect[2]]
+        crops.append(cropped)
+
+    return crops
 
 def test(args):
-    data_loader = IC15TestLoader(long_size=args.long_size)
+    data_loader = IC15TestLoader_Demo(long_size=args.long_size)
     test_loader = torch.utils.data.DataLoader(
         data_loader,
         batch_size=1,
         shuffle=False,
         num_workers=2,
         drop_last=True)
+
+    text_engine = TextEngine(cuda=True)
 
     # Setup Model
     if args.arch == "resnet50":
@@ -113,7 +162,7 @@ def test(args):
     total_frame = 0.0
     total_time = 0.0
     for idx, (org_img, img) in enumerate(test_loader):
-        print('progress: %d / %d'%(idx, len(test_loader)))
+        print('progress: %d / %d'%(idx+1, len(test_loader)))
         sys.stdout.flush()
 
         
@@ -172,16 +221,18 @@ def test(args):
         for bbox in bboxes:
             cv2.drawContours(text_box, [bbox.reshape(4, 2)], -1, (0, 255, 0), 2)
 
-        image_name = data_loader.img_paths[idx].split('/')[-1].split('.')[0]
-        write_result_as_txt(image_name, bboxes, 'outputs/submit_ic15/')
+        # image_name = data_loader.img_paths[idx].split('/')[-1].split('.')[0]
+        # write_result_as_txt(image_name, bboxes, 'outputs/submit_ic15/')
+        save_bbox(idx, data_loader.img_paths, bboxes, 'outputs/vis_ocr/')
         
         text_box = cv2.resize(text_box, (text.shape[1], text.shape[0]))
-        debug(idx, data_loader.img_paths, [[text_box]], 'outputs/vis_ic15/')
+        debug(idx, data_loader.img_paths, [[text_box]], 'outputs/vis_ocr/')
 
-    cmd = 'cd %s;zip -j %s %s/*'%('./outputs/', 'submit_ic15.zip', 'submit_ic15');
-    print(cmd)
-    sys.stdout.flush()
-    util.cmd.cmd(cmd)
+        cropped_images = get_crops(idx, data_loader.img_paths, bboxes)
+        recognized_text = text_engine.recognize_text_aic(cropped_images)
+        print('recognized: {}'.format(list(recognized_text)))
+        exit()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Hyperparams')
@@ -189,13 +240,13 @@ if __name__ == '__main__':
     parser.add_argument('--resume', nargs='?', type=str, default=None,    
                         help='Path to previous saved model to restart from')
     parser.add_argument('--binary_th', nargs='?', type=float, default=1.0,
-                        help='Path to previous saved model to restart from')
+                        help='??')
     parser.add_argument('--kernel_num', nargs='?', type=int, default=7,
-                        help='Path to previous saved model to restart from')
+                        help='number of kernels during training')
     parser.add_argument('--scale', nargs='?', type=int, default=1,
-                        help='Path to previous saved model to restart from')
+                        help='')
     parser.add_argument('--long_size', nargs='?', type=int, default=2240,
-                        help='Path to previous saved model to restart from')
+                        help='size of length of testing image')
     parser.add_argument('--min_kernel_area', nargs='?', type=float, default=5.0,
                         help='min kernel area')
     parser.add_argument('--min_area', nargs='?', type=float, default=800.0,

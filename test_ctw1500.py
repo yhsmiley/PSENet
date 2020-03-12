@@ -39,7 +39,7 @@ def debug(idx, img_paths, imgs, output_root):
         col.append(res)
     res = np.concatenate(col, axis=0)
     img_name = img_paths[idx].split('/')[-1]
-    print idx, '/', len(img_paths), img_name
+    print ('{}/{} {}'.format(idx, len(img_paths), img_name))
     cv2.imwrite(output_root + img_name, res)
 
 def write_result_as_txt(image_name, bboxes, path):
@@ -123,14 +123,15 @@ def test(args):
         print('progress: %d / %d'%(idx, len(test_loader)))
         sys.stdout.flush()
 
-        img = Variable(img.cuda(), volatile=True)
+        img = Variable(img.cuda())
         org_img = org_img.numpy().astype('uint8')[0]
         text_box = org_img.copy()
 
         torch.cuda.synchronize()
         start = time.time()
 
-        outputs = model(img)
+        with torch.no_grad():
+            outputs = model(img)
 
         score = torch.sigmoid(outputs[:, 0, :, :])
         outputs = (torch.sign(outputs - args.binary_th) + 1) / 2
@@ -166,7 +167,8 @@ def test(args):
             binary = np.zeros(label.shape, dtype='uint8')
             binary[label == i] = 1
 
-            _, contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            # _, contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             contour = contours[0]
             # epsilon = 0.01 * cv2.arcLength(contour, True)
             # bbox = cv2.approxPolyDP(contour, epsilon, True)
@@ -187,7 +189,7 @@ def test(args):
         sys.stdout.flush()
 
         for bbox in bboxes:
-            cv2.drawContours(text_box, [bbox.reshape(bbox.shape[0] / 2, 2)], -1, (0, 255, 0), 2)
+            cv2.drawContours(text_box, [bbox.reshape(bbox.shape[0] // 2, 2)], -1, (0, 255, 0), 2)
 
         image_name = data_loader.img_paths[idx].split('/')[-1].split('.')[0]
         write_result_as_txt(image_name, bboxes, 'outputs/submit_ctw1500/')
